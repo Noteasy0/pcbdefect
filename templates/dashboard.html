@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f6fa;
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: #fff;
+      padding: 18px 25px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .username {
+      font-weight: 500;
+      color: #4b5563;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: #4f46e5;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #4338ca;
+    }
+
+    .btn-primary:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .btn-secondary:hover {
+      background: #d1d5db;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #059669;
+    }
+
+    .camera-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .camera-controls button {
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .camera-select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 10px;
+      background: white;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
+    }
+
+    .card h3 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #111827;
+      border-bottom: 2px solid #4f46e5;
+      padding-bottom: 8px;
+    }
+
+    .camera-container {
+      position: relative;
+      display: inline-block;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      width: 100%;
+    }
+
+    #camera,
+    #overlay {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 6px;
+      font-weight: 500;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .status.processing {
+      background: #fff7ed;
+      color: #b45309;
+    }
+
+    .status.success {
+      background: #ecfdf5;
+      color: #065f46;
+    }
+
+    .status.error {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+
+    .stat-box {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .stat-item {
+      background: #4f46e5;
+      color: white;
+      padding: 16px;
+      border-radius: 6px;
+      text-align: center;
+      transition: background 0.15s ease;
+    }
+
+    .stat-item:hover {
+      background: #4338ca;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .recent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .recent-item {
+      position: relative;
+      background: #fff;
+      padding: 8px;
+      border-radius: 6px;
+      text-align: center;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      cursor: pointer;
+    }
+
+    .recent-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .recent-item img {
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+      display: block;
+    }
+
+    .recent-item canvas {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      width: calc(100% - 16px);
+      height: auto;
+      pointer-events: none;
+    }
+
+    .defect-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .defect-badge.yes {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .defect-badge.no {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .top-classes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .class-tag {
+      background: #4f46e5;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #4f46e5;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stat-box {
+        grid-template-columns: 1fr;
+      }
+
+      .header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+      }
+    }
+  </style>
+  </head>
+
+  <body>
+    <div class="loading-overlay" id="loading_overlay">
+      <div class="loading-spinner"></div>
+    </div>
+
+    <div class="container">
+      <div class="header">
+        <h1>Defect Detection Dashboard</h1>
+        <div class="user-info">
+          <span class="username">{{ user.username }}</span>
+          <button class="btn btn-secondary" onclick="logout()">Logout</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Live Camera Detection</h3>
+          <select id="camera_select" class="camera-select">
+            <option value>Selecting camera...</option>
+          </select>
+          <div class="camera-controls">
+            <button id="toggle_camera_btn" class="btn btn-danger">
+              Stop Camera
+            </button>
+            <button id="toggle_live_btn" class="btn btn-success">
+              Start Live Detection
+            </button>
+          </div>
+          <div class="camera-container">
+            <video id="camera" width="400" height="400" autoplay
+              playsinline></video>
+            <canvas id="overlay" width="400" height="400"></canvas>
+          </div>
+          <button id="capture_btn" class="btn btn-primary"
+            onclick="captureAndDetect()" style="width: 100%; margin-top: 15px;">
+            Capture & Detect
+          </button>
+          <div id="camera_status" class="status" style="display: none;"></div>
+        </div>
+
+        <div class="card">
+          <h3>Statistics Overview</h3>
+          <div class="stat-box">
+            <div class="stat-item">
+              <div class="stat-value" id="overall_rate">0</div>
+              <div class="stat-label">Defect Rate %</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="total_count">0</div>
+              <div class="stat-label">Total Detections</div>
+            </div>
+          </div>
+          <div style="margin-top: 20px;">
+            <strong style="color: #333;">Top Defect Classes:</strong>
+            <div class="top-classes" id="top_classes">
+              <span class="class-tag">Loading...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="live_summary_card" style="display: none;">
+          <h3>Live Detection Summary</h3>
+          <div class="stat-box">
+            <div class="stat-item">
+              <div class="stat-value" id="live_defect_rate">0</div>
+              <div class="stat-label">Live Defect Rate %</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="live_count">0</div>
+              <div class="stat-label">Live Count</div>
+            </div>
+          </div>
+          <div style="margin-top: 20px;">
+            <strong style="color: #333;">Class Breakdown:</strong>
+            <div class="top-classes" id="live_class_breakdown">
+              <span class="class-tag">No data yet</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="display: none;"">
+        <h3
+          style="display: flex; justify-content: space-between; align-items: center;">
+          Daily Defect Rate Control Chart
+          <button id="toggle_chart_btn" class="btn btn-secondary"
+            style="padding: 4px 12px; font-size: 12px;">
+            Show Chart
+          </button>
+        </h3>
+        <div class="chart-wrapper" id="chart_wrapper"
+          style="display: none; text-align: center; margin-top: 10px;">
+          <img id="control_chart"
+            src="/api/dashboard/control_chart/{{ user.id }}" alt="Control Chart"
+            style="max-width: 100%; height: auto; border-radius: 6px;" />
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Recent Detections</h3>
+        <div style="margin-bottom: 12px;">
+          <label for="date_filter"
+            style="font-size: 14px; font-weight: 500; color: #374151;">Filter by
+            Date:</label>
+          <input type="date" id="date_filter"
+            style="margin-left: 10px; padding: 6px 10px; border-radius: 4px; border: 1px solid #d1d5db;" />
+        </div>
+        <div id="recent" class="recent-grid"></div>
+      </div>
+    </div>
+
+    <script>
+    const user_id = {{ user.id }};
+    let liveDetectionCount = 0;
+    let liveDefectCount = 0;
+    let liveDetectionInterval = null;
+    let liveDetectionActive = false;
+    let cameraActive = false;
+    let allRecentData = [];
+    let isProcessing = false;
+    let currentStream = null;
+    let availableCameras = [];
+
+    const toggleLiveBtn = document.getElementById("toggle_live_btn");
+    const toggleCameraBtn = document.getElementById("toggle_camera_btn");
+    const captureBtn = document.getElementById("capture_btn");
+    const toggleChartBtn = document.getElementById("toggle_chart_btn");
+    const chartWrapper = document.getElementById("chart_wrapper");
+    const cameraSelect = document.getElementById("camera_select");
+
+    function logout() {
+      if (confirm('Are you sure you want to logout?')) {
+        stopLiveDetection();
+        stopCamera();
+        window.location.href = "/logout";
+      }
+    }
+
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("overlay");
+    const ctx = canvas.getContext("2d");
+
+    // Get available cameras
+    async function getCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        availableCameras = devices.filter(device => device.kind === 'videoinput');
+        
+        cameraSelect.innerHTML = '';
+        if (availableCameras.length === 0) {
+          cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+          return;
+        }
+
+        availableCameras.forEach((camera, index) => {
+          const option = document.createElement('option');
+          option.value = camera.deviceId;
+          const label = camera.label || `Camera ${index + 1}`;
+          option.textContent = label.includes('back') || label.includes('rear') 
+            ? `📷 ${label} (Rear)` 
+            : label.includes('front') 
+            ? `🤳 ${label} (Front)` 
+            : `📹 ${label}`;
+          cameraSelect.appendChild(option);
+        });
+
+        // Select back camera by default on mobile
+        const backCamera = availableCameras.find(cam => 
+          cam.label.toLowerCase().includes('back') || 
+          cam.label.toLowerCase().includes('rear')
+        );
+        if (backCamera) {
+          cameraSelect.value = backCamera.deviceId;
+        }
+      } catch (err) {
+        console.error("Error getting cameras:", err);
+        cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
+      }
+    }
+
+    // Initialize camera
+    async function initCamera(deviceId = null) {
+      try {
+        // Stop existing stream
+        if (currentStream) {
+          currentStream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        };
+
+        if (deviceId) {
+          constraints.video.deviceId = { exact: deviceId };
+        } else {
+          constraints.video.facingMode = 'environment';
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        video.srcObject = stream;
+        cameraActive = true;
+        
+        video.addEventListener('loadedmetadata', () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        });
+
+        toggleCameraBtn.textContent = "Stop Camera";
+        toggleCameraBtn.className = "btn btn-danger";
+        captureBtn.disabled = false;
+        toggleLiveBtn.disabled = false;
+
+        showStatus("camera_status", "Camera started", "success");
+      } catch (err) {
+        console.error("Camera error:", err);
+        showStatus("camera_status", "Camera not available", "error");
+        toggleCameraBtn.textContent = "Start Camera";
+        toggleCameraBtn.className = "btn btn-success";
+        captureBtn.disabled = true;
+        toggleLiveBtn.disabled = true;
+        cameraActive = false;
+      }
+    }
+
+    function stopCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
+      video.srcObject = null;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      cameraActive = false;
+      
+      // Stop live detection if active
+      if (liveDetectionActive) {
+        toggleLiveDetection();
+      }
+
+      toggleCameraBtn.textContent = "Start Camera";
+      toggleCameraBtn.className = "btn btn-success";
+      captureBtn.disabled = true;
+      toggleLiveBtn.disabled = true;
+      
+      showStatus("camera_status", "Camera stopped", "success");
+    }
+
+    // Camera select change handler
+    cameraSelect.addEventListener('change', async () => {
+      if (cameraActive && cameraSelect.value) {
+        await initCamera(cameraSelect.value);
+      }
+    });
+
+    // Toggle camera button
+    toggleCameraBtn.addEventListener('click', async () => {
+      if (cameraActive) {
+        stopCamera();
+      } else {
+        const deviceId = cameraSelect.value || null;
+        await initCamera(deviceId);
+      }
+    });
+
+    // Initialize - get cameras first, then start camera
+    (async () => {
+      await getCameras();
+      await initCamera(cameraSelect.value || null);
+    })();
+
+    function showStatus(elementId, message, type = "processing") {
+      const statusEl = document.getElementById(elementId);
+      statusEl.className = `status ${type}`;
+      statusEl.textContent = message;
+      statusEl.style.display = "block";
+      
+      if (type !== "processing") {
+        setTimeout(() => {
+          statusEl.style.display = "none";
+        }, 5000);
+      }
+    }
+
+    function showLoading(show) {
+      document.getElementById("loading_overlay").style.display = show ? "flex" : "none";
+    }
+
+    async function captureAndDetect() {
+      if (isProcessing) {
+        console.log("Already processing, please wait");
+        return;
+      }
+
+      if (!cameraActive) {
+        showStatus("camera_status", "Please start camera first", "error");
+        return;
+      }
+
+      try {
+        isProcessing = true;
+        captureBtn.disabled = true;
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const img_b64 = canvas.toDataURL("image/jpeg", 0.9);
+
+        showStatus("camera_status", "Processing...", "processing");
+
+        const resp = await fetch("/api/dashboard/detect_live", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: user_id,
+            image_base64: img_b64
+          })
+        });
+
+        if (!resp.ok) {
+          throw new Error(`HTTP error! status: ${resp.status}`);
+        }
+
+        const data = await resp.json();
+
+        liveDetectionCount++;
+        if (data.is_defect) liveDefectCount++;
+        
+        const liveRate = liveDetectionCount > 0 
+          ? (liveDefectCount / liveDetectionCount * 100).toFixed(2) 
+          : 0;
+        
+        document.getElementById("live_defect_rate").textContent = liveRate;
+        document.getElementById("live_count").textContent = liveDetectionCount;
+
+        const classBreakdown = document.getElementById("live_class_breakdown");
+        if (Object.keys(data.class_counts).length > 0) {
+          classBreakdown.innerHTML = Object.entries(data.class_counts)
+            .map(([k, v]) => `<span class="class-tag">${k} (${v})</span>`)
+            .join("");
+        } else {
+          classBreakdown.innerHTML = '<span class="class-tag">No defects</span>';
+        }
+
+        drawBoundingBoxes(data.detections);
+
+        const statusMsg = data.is_defect
+          ? `Defect detected! (${data.process_time.toFixed(2)}s)`
+          : `No defects found (${data.process_time.toFixed(2)}s)`;
+        showStatus("camera_status", statusMsg, data.is_defect ? "error" : "success");
+
+        updateDashboard();
+
+      } catch (error) {
+        console.error("Detection error:", error);
+        showStatus("camera_status", "Detection failed", "error");
+      } finally {
+        isProcessing = false;
+        captureBtn.disabled = false;
+      }
+    }
+
+    function drawBoundingBoxes(detections) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      if (!detections || detections.length === 0) return;
+
+      ctx.lineWidth = 3;
+      ctx.font = "14px Arial";
+
+      detections.forEach(det => {
+        const [x1, y1, x2, y2] = det.bbox;
+        const scaleX = canvas.width / 640;
+        const scaleY = canvas.height / 640;
+        
+        const sx1 = x1 * scaleX;
+        const sy1 = y1 * scaleY;
+        const sx2 = x2 * scaleX;
+        const sy2 = y2 * scaleY;
+
+        ctx.strokeStyle = "#ef4444";
+        ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+
+        const label = `${det.class} ${Math.round(det.conf * 100)}%`;
+        const textWidth = ctx.measureText(label).width;
+        
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(sx1, sy1 - 25, textWidth + 10, 25);
+
+        ctx.fillStyle = "white";
+        ctx.fillText(label, sx1 + 5, sy1 - 7);
+      });
+    }
+
+    function startLiveDetection() {
+      if (!liveDetectionInterval) {
+        liveDetectionInterval = setInterval(() => {
+          if (liveDetectionActive && !isProcessing) {
+            captureAndDetect();
+          }
+        }, 5000);
+      }
+    }
+
+    function stopLiveDetection() {
+      if (liveDetectionInterval) {
+        clearInterval(liveDetectionInterval);
+        liveDetectionInterval = null;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      showStatus("camera_status", "Live detection stopped", "success");
+    }
+
+    function toggleLiveDetection() {
+      if (!cameraActive) {
+        showStatus("camera_status", "Please start camera first", "error");
+        return;
+      }
+
+      liveDetectionActive = !liveDetectionActive;
+      
+      if (liveDetectionActive) {
+        toggleLiveBtn.textContent = "Stop Live Detection";
+        toggleLiveBtn.className = "btn btn-danger";
+        document.getElementById("live_summary_card").style.display = "none";
+        startLiveDetection();
+        showStatus("camera_status", "Live detection started", "success");
+      } else {
+        toggleLiveBtn.textContent = "Start Live Detection";
+        toggleLiveBtn.className = "btn btn-success";
+        stopLiveDetection();
+      }
+    }
+
+    toggleLiveBtn.addEventListener("click", toggleLiveDetection);
+
+    toggleChartBtn.addEventListener("click", () => {
+      const isHidden = chartWrapper.style.display === "none";
+      chartWrapper.style.display = isHidden ? "block" : "none";
+      toggleChartBtn.textContent = isHidden ? "Hide Chart" : "Show Chart";
+    });
+
+  //   async function previewAndDetectMobile(input) {
+  //   const file = input.files[0];
+  //   if (!file) return;
+
+  //   const reader = new FileReader();
+  //   reader.onload = async function(e) {
+  //     const preview = document.getElementById("mobile_preview");
+  //     preview.src = e.target.result;
+  //     preview.style.display = "block";
+
+  //     const statusEl = document.getElementById("mobile_status");
+  //     statusEl.style.display = "block";
+  //     statusEl.textContent = "Processing...";
+  //     statusEl.className = "status processing";
+
+  //     try {
+  //       // เรียก API ตรวจ defect
+  //       const resp = await fetch("/api/dashboard/detect_live", {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify({
+  //           user_id: user_id, // ใช้ user_id จากสคริปต์หลัก
+  //           image_base64: e.target.result
+  //         })
+  //       });
+
+  //       const data = await resp.json();
+
+  //       if (data.is_defect) {
+  //         statusEl.textContent = "Defect detected!";
+  //         statusEl.className = "status error";
+  //       } else {
+  //         statusEl.textContent = "No defects found";
+  //         statusEl.className = "status success";
+  //       }
+
+  //     } catch (err) {
+  //       console.error("Mobile detect error:", err);
+  //       statusEl.textContent = "Detection failed";
+  //       statusEl.className = "status error";
+  //     }
+  //   };
+  //   reader.readAsDataURL(file);
+  // }
+
+    async function updateDashboard() {
+      try {
+        const resp = await fetch(`/api/dashboard/data/${user_id}`);
+        if (!resp.ok) return;
+        
+        const data = await resp.json();
+        allRecentData = data.recent;
+
+        document.getElementById("overall_rate").textContent = 
+          (data.stats.overall_rate * 100).toFixed(2);
+        document.getElementById("total_count").textContent = data.stats.total;
+
+        const topClasses = document.getElementById("top_classes");
+        if (data.top_classes && data.top_classes.length > 0) {
+          topClasses.innerHTML = data.top_classes
+            .map(c => `<span class="class-tag">${c[0]} (${c[1]})</span>`)
+            .join("");
+        } else {
+          topClasses.innerHTML = '<span class="class-tag">No data</span>';
+        }
+
+        renderRecentDetections();
+
+        document.getElementById("control_chart").src = 
+          `/api/dashboard/control_chart/${user_id}?t=${Date.now()}`;
+          
+      } catch (error) {
+        console.error("Dashboard update error:", error);
+      }
+    }
+
+    function renderRecentDetections() {
+      const recentDiv = document.getElementById("recent");
+      const filterDate = document.getElementById("date_filter").value;
+
+      let filtered = allRecentData;
+      if (filterDate) {
+        filtered = allRecentData.filter(r => r.timestamp.startsWith(filterDate));
+      }
+
+      if (!filtered || filtered.length === 0) {
+        recentDiv.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No recent detections</p>';
+        return;
+      }
+
+      recentDiv.innerHTML = filtered.map((r, index) => {
+        const time = new Date(r.timestamp).toLocaleString();
+        const defectClass = r.is_defect ? "yes" : "no";
+        const defectText = r.is_defect ? "Defect" : "OK";
+        
+        return `
+          <div class="recent-item" data-index="${index}">
+            <img src="/${r.image_path}" alt="Detection" loading="lazy">
+            <canvas></canvas>
+            <div style="font-size: 11px; color: #6b7280; margin: 4px 0;">${time}</div>
+            <span class="defect-badge ${defectClass}">${defectText}</span>
+          </div>
+        `;
+      }).join("");
+
+      // Draw bounding boxes on recent images
+      filtered.forEach((r, idx) => {
+        if (!r.detections || r.detections.length === 0) return;
+
+        const container = recentDiv.querySelector(`.recent-item[data-index="${idx}"]`);
+        if (!container) return;
+
+        const img = container.querySelector("img");
+        const canvas = container.querySelector("canvas");
+        const ctx = canvas.getContext("2d");
+
+        function drawBoxes() {
+          if (!img.complete || img.naturalWidth === 0) return;
+
+          canvas.width = img.clientWidth;
+          canvas.height = img.clientHeight;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          r.detections.forEach(det => {
+            const [x1, y1, x2, y2] = det.bbox;
+            const scaleX = canvas.width / img.naturalWidth;
+            const scaleY = canvas.height / img.naturalHeight;
+
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+              x1 * scaleX, 
+              y1 * scaleY, 
+              (x2 - x1) * scaleX, 
+              (y2 - y1) * scaleY
+            );
+
+            const label = `${det.class} ${Math.round(det.conf * 100)}%`;
+            const textWidth = ctx.measureText(label).width;
+            
+            ctx.fillStyle = "#ef4444";
+            ctx.fillRect(x1 * scaleX, y1 * scaleY - 18, textWidth + 8, 18);
+            
+            ctx.fillStyle = "#fff";
+            ctx.font = "12px Arial";
+            ctx.fillText(label, x1 * scaleX + 4, y1 * scaleY - 4);
+          });
+        }
+
+        if (img.complete) {
+          drawBoxes();
+        } else {
+          img.onload = drawBoxes;
+        }
+      });
+    }
+
+    document.getElementById("date_filter").addEventListener("change", renderRecentDetections);
+
+    // Initialize
+    updateDashboard();
+    setInterval(updateDashboard, 5000);
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      stopLiveDetection();
+      stopCamera();
+    });
+  </script>
+  </body>
+</html>
