@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard</title>
-    <link rel="stylesheet" href="css/style.css" />
+    <title>Detection</title>
     <style>
     * {
       margin: 0;
@@ -64,12 +63,12 @@
     }
 
     .btn-primary {
-      background: #4f46e5;
+      background: #468be5;
       color: white;
     }
 
     .btn-primary:hover {
-      background: #4338ca;
+      background: #468be5;
     }
 
     .btn-primary:disabled {
@@ -150,7 +149,7 @@
       font-size: 18px;
       margin-bottom: 15px;
       color: #111827;
-      border-bottom: 2px solid #4f46e5;
+      border-bottom: 2px solid #468be5;
       padding-bottom: 8px;
     }
 
@@ -209,7 +208,7 @@
     }
 
     .stat-item {
-      background: #4f46e5;
+      background: #468be5;
       color: white;
       padding: 16px;
       border-radius: 6px;
@@ -218,7 +217,7 @@
     }
 
     .stat-item:hover {
-      background: #4338ca;
+      background: #468be5;
     }
 
     .stat-value {
@@ -297,7 +296,7 @@
     }
 
     .class-tag {
-      background: #4f46e5;
+      background: #468be5;
       color: white;
       padding: 4px 10px;
       border-radius: 12px;
@@ -322,7 +321,7 @@
       width: 50px;
       height: 50px;
       border: 5px solid #f3f3f3;
-      border-top: 5px solid #4f46e5;
+      border-top: 5px solid #468be5;
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
@@ -357,7 +356,7 @@
 
     <div class="container">
       <div class="header">
-        <h1>Defect Detection Dashboard</h1>
+        <h1>Defect Detection</h1>
         <div class="user-info">
           <span class="username">{{ user.username }}</span>
           <button class="btn btn-secondary" onclick="logout()">Logout</button>
@@ -949,17 +948,64 @@
       });
     }
 
-    document.getElementById("date_filter").addEventListener("change", renderRecentDetections);
+// Click to open modal preview
+document.getElementById("recent").addEventListener("click", (e) => {
+  const item = e.target.closest(".recent-item");
+  if (!item) return;
+  const index = item.dataset.index;
+  const data = allRecentData[index];
 
-    // Initialize
-    updateDashboard();
-    setInterval(updateDashboard, 5000);
+  const modal = document.createElement("div");
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000;
+  `;
+  modal.innerHTML = `
+    <div style="position: relative; background: #fff; padding: 20px; border-radius: 8px; max-width: 90%; max-height: 90%; overflow: auto;">
+      <canvas id="modal_canvas"></canvas>
+      <div style="margin-top: 10px; font-size: 14px;">
+        <strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}<br>
+        <strong>Status:</strong> ${data.is_defect ? "Defect" : "OK"}
+      </div>
+      <button id="modal_close" style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 4px;">Close</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
 
-    // Cleanup on page unload
-    window.addEventListener('beforeunload', () => {
-      stopLiveDetection();
-      stopCamera();
+  const canvas = document.getElementById("modal_canvas");
+  const ctx = canvas.getContext("2d");
+  const img = new Image();
+  img.src = `/${data.image_path}`;
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    data.detections?.forEach(det => {
+      const [x1, y1, x2, y2] = det.bbox;
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(x1, y1 - 20, ctx.measureText(det.class).width + 8, 20);
+      ctx.fillStyle = "#fff";
+      ctx.font = "16px Arial";
+      ctx.fillText(det.class, x1 + 4, y1 - 4);
     });
+  };
+
+  document.getElementById("modal_close").addEventListener("click", () => modal.remove());
+});
+
+document.getElementById("date_filter").addEventListener("change", renderRecentDetections);
+
+updateDashboard();
+setInterval(updateDashboard, 5000);
+
+window.addEventListener('beforeunload', () => {
+  stopLiveDetection();
+  stopCamera();
+});
   </script>
   </body>
 </html>
