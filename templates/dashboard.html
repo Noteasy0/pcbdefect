@@ -326,6 +326,30 @@
       animation: spin 1s linear infinite;
     }
 
+    .modal-controls {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-controls button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal-prev, .modal-next {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.modal-close {
+  background: #ef4444;
+  color: #fff;
+}
+
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
@@ -430,7 +454,7 @@
         </div>
       </div>
 
-      <div class="card" style="display: none;"">
+      <div class="card" style="display: none;">
         <h3
           style="display: flex; justify-content: space-between; align-items: center;">
           Daily Defect Rate Control Chart
@@ -471,6 +495,8 @@
     let isProcessing = false;
     let currentStream = null;
     let availableCameras = [];
+    let filteredData = []; // เก็บรายการหลังกรองตามวันที่
+    let currentModalIndex = null;
 
     const toggleLiveBtn = document.getElementById("toggle_live_btn");
     const toggleCameraBtn = document.getElementById("toggle_camera_btn");
@@ -867,136 +893,163 @@
       }
     }
 
-    function renderRecentDetections() {
-      const recentDiv = document.getElementById("recent");
-      const filterDate = document.getElementById("date_filter").value;
+    // อัปเดตรายการ recent ตามวันที่
+function renderRecentDetections() {
+  const recentDiv = document.getElementById("recent");
+  const filterDate = document.getElementById("date_filter").value;
 
-      let filtered = allRecentData;
-      if (filterDate) {
-        filtered = allRecentData.filter(r => r.timestamp.startsWith(filterDate));
-      }
+  filteredData = allRecentData;
+  if (filterDate) {
+    filteredData = allRecentData.filter(r => r.timestamp.startsWith(filterDate));
+  }
 
-      if (!filtered || filtered.length === 0) {
-        recentDiv.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No recent detections</p>';
-        return;
-      }
+  if (!filteredData || filteredData.length === 0) {
+    recentDiv.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No recent detections</p>';
+    return;
+  }
 
-      recentDiv.innerHTML = filtered.map((r, index) => {
-        const time = new Date(r.timestamp).toLocaleString();
-        const defectClass = r.is_defect ? "yes" : "no";
-        const defectText = r.is_defect ? "Defect" : "OK";
-        
-        return `
-          <div class="recent-item" data-index="${index}">
-            <img src="/${r.image_path}" alt="Detection" loading="lazy">
-            <canvas></canvas>
-            <div style="font-size: 11px; color: #6b7280; margin: 4px 0;">${time}</div>
-            <span class="defect-badge ${defectClass}">${defectText}</span>
-          </div>
-        `;
-      }).join("");
+  recentDiv.innerHTML = filteredData.map((r, index) => {
+    const time = new Date(r.timestamp).toLocaleString();
+    const defectClass = r.is_defect ? "yes" : "no";
+    const defectText = r.is_defect ? "Defect" : "OK";
+    
+    return `
+      <div class="recent-item" data-index="${index}">
+        <img src="/${r.image_path}" alt="Detection" loading="lazy">
+        <canvas></canvas>
+        <div style="font-size: 11px; color: #6b7280; margin: 4px 0;">${time}</div>
+        <span class="defect-badge ${defectClass}">${defectText}</span>
+      </div>
+    `;
+  }).join("");
 
-      // Draw bounding boxes on recent images
-      filtered.forEach((r, idx) => {
-        if (!r.detections || r.detections.length === 0) return;
+  // วาด bounding boxes
+  filteredData.forEach((r, idx) => {
+    if (!r.detections || r.detections.length === 0) return;
 
-        const container = recentDiv.querySelector(`.recent-item[data-index="${idx}"]`);
-        if (!container) return;
+    const container = recentDiv.querySelector(`.recent-item[data-index="${idx}"]`);
+    if (!container) return;
 
-        const img = container.querySelector("img");
-        const canvas = container.querySelector("canvas");
-        const ctx = canvas.getContext("2d");
+    const img = container.querySelector("img");
+    const canvas = container.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
 
-        function drawBoxes() {
-          if (!img.complete || img.naturalWidth === 0) return;
+    function drawBoxes() {
+      if (!img.complete || img.naturalWidth === 0) return;
 
-          canvas.width = img.clientWidth;
-          canvas.height = img.clientHeight;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.width = img.clientWidth;
+      canvas.height = img.clientHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          r.detections.forEach(det => {
-            const [x1, y1, x2, y2] = det.bbox;
-            const scaleX = canvas.width / img.naturalWidth;
-            const scaleY = canvas.height / img.naturalHeight;
+      r.detections.forEach(det => {
+        const [x1, y1, x2, y2] = det.bbox;
+        const scaleX = canvas.width / img.naturalWidth;
+        const scaleY = canvas.height / img.naturalHeight;
 
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(
-              x1 * scaleX, 
-              y1 * scaleY, 
-              (x2 - x1) * scaleX, 
-              (y2 - y1) * scaleY
-            );
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
 
-            const label = `${det.class} ${Math.round(det.conf * 100)}%`;
-            const textWidth = ctx.measureText(label).width;
-            
-            ctx.fillStyle = "#ef4444";
-            ctx.fillRect(x1 * scaleX, y1 * scaleY - 18, textWidth + 8, 18);
-            
-            ctx.fillStyle = "#fff";
-            ctx.font = "12px Arial";
-            ctx.fillText(label, x1 * scaleX + 4, y1 * scaleY - 4);
-          });
-        }
+        const label = `${det.class} ${Math.round(det.conf * 100)}%`;
+        const textWidth = ctx.measureText(label).width;
 
-        if (img.complete) {
-          drawBoxes();
-        } else {
-          img.onload = drawBoxes;
-        }
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(x1 * scaleX, y1 * scaleY - 18, textWidth + 8, 18);
+        ctx.fillStyle = "#fff";
+        ctx.font = "12px Arial";
+        ctx.fillText(label, x1 * scaleX + 4, y1 * scaleY - 4);
       });
     }
+
+    if (img.complete) drawBoxes();
+    else img.onload = drawBoxes;
+  });
+}
 
 // Click to open modal preview
 document.getElementById("recent").addEventListener("click", (e) => {
   const item = e.target.closest(".recent-item");
   if (!item) return;
-  const index = item.dataset.index;
-  const data = allRecentData[index];
+  const index = Number(item.dataset.index);
+  showModal(index);
+});
 
-  const modal = document.createElement("div");
-  modal.style.cssText = `
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000;
-  `;
-  modal.innerHTML = `
-    <div style="position: relative; background: #fff; padding: 20px; border-radius: 8px; max-width: 90%; max-height: 90%; overflow: auto;">
-      <canvas id="modal_canvas"></canvas>
-      <div style="margin-top: 10px; font-size: 14px;">
-        <strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}<br>
-        <strong>Status:</strong> ${data.is_defect ? "Defect" : "OK"}
+function showModal(index) {
+  const data = filteredData[index];
+  if (!data) return;
+
+  let modal = document.querySelector(".custom-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.classList.add("custom-modal");
+    modal.style.cssText = `
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:10000;
+    `;
+    modal.innerHTML = `
+      <div style="position:relative; background:#fff; padding:20px; border-radius:8px; max-width:90%; max-height:90%; overflow:auto;">
+        <canvas class="modal-canvas"></canvas>
+        <div class="modal-info" style="margin-top:10px; font-size:14px;"></div>
+        <div style="margin-top:10px; text-align:right;">
+          <button class="modal-prev" style="margin-right:5px;">Previous</button>
+          <button class="modal-next" style="margin-right:5px;">Next</button>
+          <button class="modal-close" style="background:#ef4444;color:#fff;border:none;padding:6px 10px;border-radius:4px;">Close</button>
+        </div>
       </div>
-      <button id="modal_close" style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 4px;">Close</button>
-    </div>
-  `;
-  document.body.appendChild(modal);
+    `;
+    document.body.appendChild(modal);
 
-  const canvas = document.getElementById("modal_canvas");
+    modal.querySelector(".modal-close").addEventListener("click", () => modal.remove());
+    modal.querySelector(".modal-next").addEventListener("click", () => {
+      if (currentModalIndex < filteredData.length - 1) showModal(currentModalIndex + 1);
+    });
+    modal.querySelector(".modal-prev").addEventListener("click", () => {
+      if (currentModalIndex > 0) showModal(currentModalIndex - 1);
+    });
+  }
+
+  currentModalIndex = index;
+
+  const canvas = modal.querySelector(".modal-canvas");
   const ctx = canvas.getContext("2d");
+  const infoDiv = modal.querySelector(".modal-info");
+
+  infoDiv.innerHTML = `
+    <strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}<br>
+    <strong>Status:</strong> ${data.is_defect ? "Defect" : "OK"}
+  `;
+
   const img = new Image();
   img.src = `/${data.image_path}`;
   img.onload = () => {
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
+    const maxWidth = window.innerWidth * 0.8;
+    const maxHeight = window.innerHeight * 0.6;
+    const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     data.detections?.forEach(det => {
-      const [x1, y1, x2, y2] = det.bbox;
+      const [x1, y1, x2, y2] = det.bbox.map(v => v * scale);
       ctx.strokeStyle = "#ef4444";
       ctx.lineWidth = 3;
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-      ctx.fillStyle = "#ef4444";
-      ctx.fillRect(x1, y1 - 20, ctx.measureText(det.class).width + 8, 20);
-      ctx.fillStyle = "#fff";
+
       ctx.font = "16px Arial";
+      const textWidth = ctx.measureText(det.class).width;
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(x1, y1 - 20, textWidth + 8, 20);
+      ctx.fillStyle = "#fff";
       ctx.fillText(det.class, x1 + 4, y1 - 4);
     });
   };
 
-  document.getElementById("modal_close").addEventListener("click", () => modal.remove());
-});
+  modal.style.display = "flex";
+}
 
+// Re-render when date filter changes
 document.getElementById("date_filter").addEventListener("change", renderRecentDetections);
 
 updateDashboard();

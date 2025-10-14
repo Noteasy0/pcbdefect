@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Environment variables with defaults
-MODEL_PATH = os.getenv("YOLO_MODEL", "model.pt")
+MODEL_PATH = os.getenv("YOLO_MODEL", "best.pt")
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
 MAX_IMAGE_SIZE = int(os.getenv("MAX_IMAGE_SIZE", 10 * 1024 * 1024))  # 10MB
 SESSION_EXPIRE_HOURS = int(os.getenv("SESSION_EXPIRE_HOURS", 24))
