@@ -1,8 +1,8 @@
 # main.py - Enhanced version
 import time, json, os, io
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Form, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -18,10 +18,13 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import datetime
 import base64
+import pdfkit
+from io import BytesIO
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from database import SessionLocal, engine, Base
 from models import User, Detection
+from collections import Counter
 from utils import (
     save_base64_image, 
     compute_control_chart_stats, 
@@ -34,6 +37,11 @@ from utils import (
 # YOLOv8 (ultralytics)
 from ultralytics import YOLO
 import logging
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +52,9 @@ MODEL_PATH = os.getenv("YOLO_MODEL", "best.pt")
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
 MAX_IMAGE_SIZE = int(os.getenv("MAX_IMAGE_SIZE", 10 * 1024 * 1024))  # 10MB
 SESSION_EXPIRE_HOURS = int(os.getenv("SESSION_EXPIRE_HOURS", 24))
+REPORT_DIR = os.path.join("reports")
+REPORT_IMAGES_DIR = os.path.join(REPORT_DIR, "images")
+
 
 # Global model instance
 model: Optional[YOLO] = None
@@ -90,6 +101,8 @@ app.add_middleware(
 # Static files and templates
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+app.mount("/reports", StaticFiles(directory="reports"), name="reports")
 
 # Password hashing
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -584,6 +597,451 @@ async def api_control_check(payload: Dict[str, Any], db: Session = Depends(get_d
         "message": message,
         "stats": stats
     }
+
+# Color map for classes (server-side)
+CLASS_COLOR = {
+    "spur": (37, 99, 235),           # blue (#2563eb)
+    "open": (239, 68, 68),           # red (#ef4444)
+    "hole_breakout": (17, 24, 39),   # black-ish (#111827)
+    "foreign_object": (16, 185, 129) # green (#10b981)
+}
+
+def rgb_tuple_to_hex(rgb):
+    return '#{:02x}{:02x}{:02x}'.format(*rgb)
+
+def annotate_image_save(img_path: str, detections: List[Dict[str, Any]], out_path: str):
+    """Draw bounding boxes (no labels) onto image and save to out_path (uses PIL)"""
+    if not PIL_AVAILABLE:
+        # If PIL not available, just copy original
+        try:
+            with open(img_path, "rb") as fr, open(out_path, "wb") as fw:
+                fw.write(fr.read())
+            return
+        except Exception as e:
+            logger.error(f"Failed to copy image for report: {e}")
+            return
+
+    try:
+        img = Image.open(img_path).convert("RGB")
+        draw = ImageDraw.Draw(img)
+        iw, ih = img.size
+
+        for det in detections:
+            bbox = det.get("bbox", [])
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = bbox
+            # Coordinates may come from model scaled to original (we saved the model image path), assume they're in pixel units
+            color = CLASS_COLOR.get(det.get("class"), (255, 0, 0))
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=4)
+
+        img.save(out_path, format="JPEG", quality=90)
+    except Exception as e:
+        logger.error(f"Annotate image error: {e}")
+        # fallback: copy original
+        try:
+            with open(img_path, "rb") as fr, open(out_path, "wb") as fw:
+                fw.write(fr.read())
+        except Exception as ex:
+            logger.error(f"Fallback copy error: {ex}")
+
+# New endpoint: folder detect (upload up to 20 images from client)
+@app.post("/api/detect_folder")
+async def api_detect_folder(user_id: int = Form(...), files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """
+    Accept multiple files (from client folder selection), up to 20.
+    Returns JSON summary and URL to HTML report saved in /reports.
+    """
+    MAX_FILES = 20
+    if not files or len(files) == 0:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    if len(files) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Max {MAX_FILES} files allowed")
+
+    if model is None:
+        raise HTTPException(status_code=503, detail="Detection model not loaded")
+
+    timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    report_name = f"report_{user_id}_{timestamp}.html"
+    report_folder_images = os.path.join(REPORT_IMAGES_DIR, f"{user_id}_{timestamp}")
+    os.makedirs(REPORT_IMAGES_DIR, exist_ok=True)
+    os.makedirs(REPORT_DIR, exist_ok=True)
+
+    summary = {
+        "user_id": user_id,
+        "total_images": 0,
+        "images": [],  # list of dicts: {filename, saved_path, is_defect, detections: [...]}
+        "total_defect_positions": 0
+    }
+
+    for uf in files:
+        try:
+            filename = sanitize_filename(uf.filename)
+            # Save uploaded to temp images dir
+            saved_path = os.path.join("reports", "images", f"{user_id}_{timestamp}")
+            os.makedirs(saved_path, exist_ok=True)
+            disk_path = os.path.join(saved_path, f"{timestamp}_{filename}")
+            with open(disk_path, "wb") as f:
+                content = await uf.read()
+                f.write(content)
+
+            # Run inference
+            start = time.time()
+            results = model.predict(source=disk_path, conf=0.25, imgsz=640, verbose=False)
+            elapsed = time.time() - start
+            r = results[0]
+
+            detections = []
+            bboxes = []
+            is_defect = False
+
+            if hasattr(r, "boxes") and len(r.boxes) > 0:
+                is_defect = True
+                for box in r.boxes:
+                    xyxy = box.xyxy.tolist()[0] if hasattr(box.xyxy, "tolist") else list(box.xyxy)
+                    cls_idx = int(box.cls.tolist()[0]) if hasattr(box.cls, "tolist") else int(box.cls)
+                    conf = float(box.conf.tolist()[0]) if hasattr(box.conf, "tolist") else float(box.conf)
+                    class_name = model.names.get(cls_idx, f"class_{cls_idx}")
+
+                    det_item = {
+                        "class": class_name,
+                        "conf": round(conf, 4),
+                        "bbox": [round(float(x), 2) for x in xyxy]
+                    }
+                    detections.append(det_item)
+                    bboxes.append([float(x) for x in xyxy])
+
+            # Save detection record in DB (optional)
+            try:
+                detection = Detection(
+                    user_id=user_id,
+                    image_path=disk_path,
+                    is_defect=is_defect,
+                    classes_json=json.dumps({d["class"]: 1 for d in detections}) if detections else "{}",
+                    bboxes_json=json.dumps(bboxes),
+                    process_time=elapsed,
+                    raw_result_json=json.dumps({"boxes": detections})
+                )
+                db.add(detection)
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"DB save failed for {disk_path}: {e}")
+
+            # Annotate & save image for report
+            annotated_name = f"annot_{timestamp}_{filename}"
+            annotated_path = os.path.join(report_folder_images, annotated_name)
+            annotate_image_save(disk_path, detections, annotated_path)
+
+            # add to summary
+            summary["images"].append({
+                "filename": filename,
+                "saved_path": disk_path,
+                "annotated_rel": f"images/{user_id}_{timestamp}/{annotated_name}",
+                "is_defect": is_defect,
+                "detections": detections
+            })
+            summary["total_images"] += 1
+            summary["total_defect_positions"] += sum([1 for d in detections])
+        except Exception as e:
+            logger.error(f"Error processing file {uf.filename}: {e}")
+            # continue to next file
+            continue
+    from collections import Counter
+
+    defect_counter = Counter()
+    for img in summary['images']:
+        for d in img.get('detections', []):
+            defect_counter[d['class']] += 1
+
+    defect_classes = list(defect_counter.keys())
+    defect_counts = [defect_counter[c] for c in defect_classes]        
+    # Build a simple HTML report and save to reports
+    report_html_parts = []
+    report_html_parts.append(f"""
+    <html>
+    <head>
+    <meta charset='utf-8'>
+    <title>PCB Defect Analysis Report - {timestamp}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+    body {{
+    font-family: 'Calibri', 'Times New Roman', serif;
+    background-color: #ffffff;
+    color: #000000;
+    margin: 50px;
+    line-height: 1.5;
+    }}
+
+    h1 {{
+    text-align: center;
+    font-size: 22pt;
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+    margin-bottom: 30px;
+    }}
+
+    h2 {{
+    font-size: 14pt;
+    margin-top: 40px;
+    margin-bottom: 10px;
+    text-decoration: underline;
+    }}
+
+    p, .report-meta {{
+    font-size: 12pt;
+    text-align: justify;
+    }}
+
+    .table-container {{
+    text-align: center;
+    margin: 30px auto;
+    }}
+
+    table {{
+    width: 90%;
+    border-collapse: collapse;
+    margin: 0 auto;
+    font-size: 11pt;
+    background-color: #fff;
+    }}
+
+    th, td {{
+    border: 1px solid #bfbfbf;
+    padding: 8px 12px;
+    text-align: center;
+    vertical-align: middle;
+    }}
+
+    th {{
+    background-color: #f2f2f2;
+    font-weight: bold;
+    }}
+
+    tr.defect-row {{
+    background-color: #f9f9f9;
+    }}
+
+    img.report-img {{
+    max-width: 160px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    display: block;
+    margin: 5px auto;
+    }}
+
+    .legend {{
+    margin: 20px 0;
+    border: 1px solid #bfbfbf;
+    padding: 10px 15px;
+    background-color: #f9f9f9;
+    width: 90%;
+    margin-left: auto;
+    margin-right: auto;
+    }}
+
+    .legend-title {{
+    font-weight: bold;
+    margin-bottom: 5px;
+    }}
+
+    .legend-item {{
+    font-size: 11pt;
+    margin-bottom: 3px;
+    }}
+
+    .legend-color {{
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    border: 1px solid #888;
+    vertical-align: middle;
+    }}
+
+    .footer {{
+    text-align: center;
+    font-size: 10pt;
+    color: #555;
+    margin-top: 40px;
+    border-top: 1px solid #ccc;
+    padding-top: 10px;
+    }}
+
+    .chart-section {{
+    text-align: center;
+    margin: 60px auto;
+    width: 70%;
+    }}
+
+    canvas {{
+    max-width: 520px;
+    margin-top: 20px;
+    }}
+    </style>
+    </head>
+
+    <body>
+    <h1>PCB Defect Analysis Report</h1>
+
+    <p class="report-meta" style="text-align:center;">
+    Generated: {datetime.datetime.utcnow().isoformat()} UTC | Local Time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br>
+    User ID: {user_id}
+    </p>
+
+    <div class="legend">
+    <div class="legend-title">Color Legend (Defect Classification)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color:#3b82f6;"></span> Spur (สีน้ำเงิน)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color:#ef4444;"></span> Open (สีแดง)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color:#111827;"></span> Hole Breakout (สีดำ)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color:#22c55e;"></span> Foreign Object (สีเขียว)</div>
+    </div>
+
+    <h2>1. Inspection Summary</h2>
+    <p style="text-align:center;">
+    <b>Total Images:</b> {summary['total_images']} &nbsp;&nbsp;|&nbsp;&nbsp;
+    <b>Total Defect Positions:</b> {summary['total_defect_positions']}
+    </p>
+
+    <div class="table-container">
+    <table>
+    <tr>
+        <th>No.</th>
+        <th>Image & Detected Area</th>
+        <th>Filename</th>
+        <th>Status</th>
+    </tr>
+    """)
+
+    # ตารางข้อมูล
+    for i, img in enumerate(summary['images']):
+        row_class = 'defect-row' if img['is_defect'] else ''
+        detections_html = "<ul style='text-align:left; margin:0; padding-left:20px; font-size:10pt;'>" + "".join(
+            [f"<li>{d['class']} — bbox: {d['bbox']}</li>" for d in img['detections']]
+        ) + "</ul>" if img['detections'] else "<p style='font-size:10pt;'>No Defect</p>"
+        
+        report_html_parts.append(f"""
+        <tr class="{row_class}">
+        <td>{i+1}</td>
+        <td>
+            <img src="./{img['annotated_rel']}" class="report-img"/>
+            {detections_html}
+        </td>
+        <td>{img['filename']}</td>
+        <td>{'DEFECT' if img['is_defect'] else 'OK'}</td>
+        </tr>
+        """)
+
+    # นับจำนวน defect แยกตามประเภท
+    spur_count = sum(d['class'] == 'spur' for img in summary['images'] for d in img['detections'])
+    open_count = sum(d['class'] == 'open' for img in summary['images'] for d in img['detections'])
+    hole_count = sum(d['class'] == 'hole_breakout' for img in summary['images'] for d in img['detections'])
+    foreign_count = sum(d['class'] == 'foreign_object' for img in summary['images'] for d in img['detections'])
+
+    report_html_parts.append(f"""
+    </table>
+    </div>
+
+    <h2>2. Statistical Visualization</h2>
+    <p style="text-align:center;">
+    The chart below shows the number of detected defects for each defect type across all inspected images.
+    </p>
+
+    <div class="chart-section">
+    <canvas id="barChart"></canvas>
+    </div>
+
+    <div class="footer">
+    © {datetime.datetime.now().year} PCB Quality Analysis System – Automated Inspection Report
+    </div>
+
+    <script>
+    new Chart(document.getElementById('barChart'), {{
+    type: 'bar',
+    data: {{
+        labels: ['Spur', 'Open', 'Hole Breakout', 'Foreign Object'],
+        datasets: [{{
+        label: 'Number of Defects',
+        data: [{spur_count}, {open_count}, {hole_count}, {foreign_count}],
+        backgroundColor: [
+            'rgba(59,130,246,0.8)',
+            'rgba(239,68,68,0.8)',
+            'rgba(17,24,39,0.8)',
+            'rgba(34,197,94,0.8)'
+        ],
+        borderColor: [
+            'rgba(59,130,246,1)',
+            'rgba(239,68,68,1)',
+            'rgba(17,24,39,1)',
+            'rgba(34,197,94,1)'
+        ],
+        borderWidth: 1
+        }}]
+    }},
+    options: {{
+        scales: {{
+        y: {{
+            beginAtZero: true,
+            title: {{
+            display: true,
+            text: 'จำนวนข้อบกพร่อง (ครั้ง)'
+            }}
+        }},
+        x: {{
+            title: {{
+            display: true,
+            text: 'ประเภทข้อบกพร่อง'
+            }}
+        }}
+        }},
+        plugins: {{
+        legend: {{
+            display: false
+        }},
+        title: {{
+            display: true,
+            text: 'Defect Distribution by Type',
+            font: {{ size: 16 }}
+        }}
+        }}
+    }}
+    }});
+    </script>
+
+    </body>
+    </html>
+    """)
+
+    report_html = "\n".join(report_html_parts)
+    report_path = os.path.join(REPORT_DIR, report_name)
+    with open(report_path, "w", encoding="utf-8") as rf:
+        rf.write(report_html)
+
+    # คืนค่า summary
+    report_url = f"/reports/{report_name}"
+    return {
+        "summary": {
+            "total_images": summary["total_images"],
+            "total_defect_positions": summary["total_defect_positions"],
+            "images": [
+                {"filename": i["filename"], "is_defect": i["is_defect"], "annotated": i["annotated_rel"]}
+                for i in summary["images"]
+            ]
+        },
+        "report_url": report_url
+    }
+
+
+# Optional: endpoint to fetch report file (served by StaticFiles mounted at /reports)
+@app.get("/api/report/{report_name}", response_class=HTMLResponse)
+async def get_report(report_name: str):
+    # Security: sanitize name
+    safe = sanitize_filename(report_name)
+    path = os.path.join(reports, safe)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Report not found")
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read(), status_code=200)
 
 # ============================================================================
 # Health Check

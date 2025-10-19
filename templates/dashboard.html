@@ -388,14 +388,14 @@
       </div>
 
       <div class="grid">
-        <div class="card">
+        <div class="card" >
           <h3>Live Camera Detection</h3>
           <select id="camera_select" class="camera-select">
             <option value>Selecting camera...</option>
           </select>
           <div class="camera-controls">
-            <button id="toggle_camera_btn" class="btn btn-danger">
-              Stop Camera
+            <button id="toggle_camera_btn" class="btn btn-success">
+              Start Camera
             </button>
             <button id="toggle_live_btn" class="btn btn-success">
               Start Live Detection
@@ -414,6 +414,44 @@
         </div>
 
         <div class="card">
+        <h3>Detection</h3>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">
+          Select a folder containing images (max 20). The system will detect defects and generate a detailed report.
+        </p>
+        
+        <div style="margin-bottom:12px;">
+          <input id="folder_input" type="file" webkitdirectory directory multiple accept="image/*" 
+                style="display:block;margin-bottom:8px;padding:8px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+          <div id="file_count" style="font-size:12px;color:#6b7280;margin-top:4px;"></div>
+        </div>
+        
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="upload_folder_btn" class="btn btn-primary" style="flex:1;">
+            Start Detection
+          </button>
+          <a id="open_report_link" class="btn btn-secondary" style="display:none;flex:1;text-align:center;text-decoration:none;" target="_blank">
+            Open Report
+          </a>
+        </div>
+        
+        <div id="folder_status" class="status" style="display:none;margin-top:10px;"></div>
+
+        <!-- Progress bar -->
+        <div id="folder_progress" style="display:none;margin-top:12px;">
+          <div style="background:#e5e7eb;height:8px;border-radius:4px;overflow:hidden;">
+            <div id="folder_progress_bar" style="background:#468be5;height:100%;width:0%;transition:width 0.3s;"></div>
+          </div>
+          <div id="folder_progress_text" style="font-size:12px;color:#6b7280;margin-top:4px;text-align:center;"></div>
+        </div>
+
+  <!-- Summary section -->
+  <div id="folder_summary" style="margin-top:15px;display:none;">
+    <h4 style="color:#111827;margin-bottom:10px;">📊 Detection Summary</h4>
+    <div id="folder_summary_content" style="font-size:13px;color:#374151;"></div>
+  </div>
+</div>
+
+        <div class="card" style="display: none;">
           <h3>Statistics Overview</h3>
           <div class="stat-box">
             <div class="stat-item">
@@ -454,7 +492,7 @@
         </div>
       </div>
 
-      <div class="card" style="display: none;">
+      <div class="card">
         <h3
           style="display: flex; justify-content: space-between; align-items: center;">
           Daily Defect Rate Control Chart
@@ -504,6 +542,141 @@
     const toggleChartBtn = document.getElementById("toggle_chart_btn");
     const chartWrapper = document.getElementById("chart_wrapper");
     const cameraSelect = document.getElementById("camera_select");
+    const folderInput = document.getElementById('folder_input');
+  const uploadFolderBtn = document.getElementById('upload_folder_btn');
+  const folderStatus = document.getElementById('folder_status');
+  const folderSummary = document.getElementById('folder_summary');
+  const folderSummaryContent = document.getElementById('folder_summary_content');
+  const openReportLink = document.getElementById('open_report_link');
+
+  function showFolderStatus(msg, type='processing') {
+    folderStatus.className = `status ${type}`;
+    folderStatus.textContent = msg;
+    folderStatus.style.display = 'block';
+    if(type !== 'processing') setTimeout(()=> folderStatus.style.display='none', 6000);
+  }
+
+  uploadFolderBtn.addEventListener('click', async () => {
+    const files = Array.from(folderInput.files || []);
+    if (!files || files.length === 0) {
+      showFolderStatus('Please choose a folder with images first', 'error');
+      return;
+    }
+    // Filter image files (by mime or extension)
+    const imageFiles = files.filter(f => /image/i.test(f.type) || /\.(jpe?g|png|bmp|webp)$/i.test(f.name));
+    if (imageFiles.length === 0) {
+      showFolderStatus('No images found in selected folder', 'error');
+      return;
+    }
+    if (imageFiles.length > 20) {
+      showFolderStatus('Maximum 20 images allowed. Please select fewer files.', 'error');
+      return;
+    }
+
+    // Prepare FormData
+    const fd = new FormData();
+    fd.append('user_id', user_id);
+    imageFiles.forEach(f => fd.append('files', f, f.name));
+
+    try {
+      showFolderStatus('Uploading and detecting... please wait', 'processing');
+      uploadFolderBtn.disabled = true;
+
+      const resp = await fetch('/api/detect_folder', {
+        method: 'POST',
+        body: fd
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error('Server error: ' + resp.status + ' ' + txt);
+      }
+
+      const data = await resp.json();
+      showFolderStatus('Folder processed', 'success');
+      folderSummary.style.display = 'block';
+
+      // show summary
+      const s = data.summary;
+      let html = `<p>Total images: <strong>${s.total_images}</strong></p>`;
+      html += `<p>Total defect positions: <strong>${s.total_defect_positions}</strong></p>`;
+      html += `<ul>`;
+      s.images.forEach(im => {
+        html += `<li>${im.filename} — ${im.is_defect ? '<strong style="color:#b91c1c">DEFECT</strong>' : 'OK'}</li>`;
+      });
+      html += `</ul>`;
+      folderSummaryContent.innerHTML = html;
+
+      // show report link
+      if (data.report_url) {
+        openReportLink.href = data.report_url;
+        openReportLink.style.display = 'inline-block';
+        openReportLink.textContent = 'Open Report (HTML)';
+      }
+    } catch (err) {
+      console.error('Folder detect error', err);
+      showFolderStatus('Folder detect failed: ' + err.message, 'error');
+    } finally {
+      uploadFolderBtn.disabled = false;
+    }
+  });
+
+  // ------------ Update drawBoundingBoxes to use color mapping and NOT show labels ----------
+  function drawBoundingBoxes(detections) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!detections || detections.length === 0) return;
+
+    ctx.lineWidth = 3;
+
+    detections.forEach(det => {
+      const [x1, y1, x2, y2] = det.bbox;
+      // scale detection coordinates from model (assumes model used 640 reference). If your model returns absolute pixel coords, adjust accordingly.
+      const scaleX = canvas.width / 640;
+      const scaleY = canvas.height / 640;
+
+      const sx1 = x1 * scaleX;
+      const sy1 = y1 * scaleY;
+      const sx2 = x2 * scaleX;
+      const sy2 = y2 * scaleY;
+
+      // color mapping (match server): spur blue, open red, hole_breakout black, foreign_object green
+      let color = '#ef4444';
+      if (det.class === 'spur') color = '#2563eb';
+      else if (det.class === 'open') color = '#ef4444';
+      else if (det.class === 'hole_breakout') color = '#111827';
+      else if (det.class === 'foreign_object') color = '#10b981';
+      // stroke rectangle only — no label/percent
+      ctx.strokeStyle = color;
+      ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+    });
+  }
+
+  // Also update the recent grid drawing functions (where canvas on thumbnails are drawn)
+  // find and replace any ctx.strokeStyle usage for labels with the same mapping and remove label drawing
+  // (below we modify the function used to draw boxes on thumbnails)
+
+  function drawBoxesOnThumbnail(ctxThumb, img, detections) {
+    ctxThumb.clearRect(0, 0, ctxThumb.canvas.width, ctxThumb.canvas.height);
+    if (!detections || detections.length === 0) return;
+
+    const scaleX = ctxThumb.canvas.width / img.naturalWidth;
+    const scaleY = ctxThumb.canvas.height / img.naturalHeight;
+    ctxThumb.lineWidth = 2;
+
+    detections.forEach(det => {
+      const [x1, y1, x2, y2] = det.bbox;
+      let color = '#ef4444';
+      if (det.class === 'spur') color = '#2563eb';
+      else if (det.class === 'open') color = '#ef4444';
+      else if (det.class === 'hole_breakout') color = '#111827';
+      else if (det.class === 'foreign_object') color = '#10b981';
+
+      ctxThumb.strokeStyle = color;
+      ctxThumb.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
+    });
+  }
+
 
     function logout() {
       if (confirm('Are you sure you want to logout?')) {
@@ -633,19 +806,27 @@
     });
 
     // Toggle camera button
-    toggleCameraBtn.addEventListener('click', async () => {
-      if (cameraActive) {
-        stopCamera();
-      } else {
-        const deviceId = cameraSelect.value || null;
-        await initCamera(deviceId);
-      }
-    });
+    toggleCameraBtn.addEventListener("click", async () => {
+  if (!cameraActive) {
+    await initCamera(cameraSelect.value || null); // เริ่มกล้อง
+    cameraActive = true;
+    toggleCameraBtn.textContent = "Stop Camera";
+    toggleCameraBtn.className = "btn btn-danger";
+  } else {
+    stopCamera(); // ฟังก์ชันหยุดกล้อง
+    cameraActive = false;
+    toggleCameraBtn.textContent = "Start Camera";
+    toggleCameraBtn.className = "btn btn-success";
+    liveDetectionActive = false; // ปิด live detection ด้วย
+    toggleLiveBtn.textContent = "Start Live Detection";
+    toggleLiveBtn.className = "btn btn-success";
+  }
+});
 
     // Initialize - get cameras first, then start camera
     (async () => {
       await getCameras();
-      await initCamera(cameraSelect.value || null);
+      // await initCamera(cameraSelect.value || null);
     })();
 
     function showStatus(elementId, message, type = "processing") {
@@ -904,7 +1085,7 @@ function renderRecentDetections() {
   }
 
   if (!filteredData || filteredData.length === 0) {
-    recentDiv.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No recent detections</p>';
+    recentDiv.innerHTML = '<p style="text-align:center;color:#6b7280;padding:20px;">No recent detections</p>';
     return;
   }
 
@@ -917,13 +1098,13 @@ function renderRecentDetections() {
       <div class="recent-item" data-index="${index}">
         <img src="/${r.image_path}" alt="Detection" loading="lazy">
         <canvas></canvas>
-        <div style="font-size: 11px; color: #6b7280; margin: 4px 0;">${time}</div>
+        <div style="font-size:11px;color:#6b7280;margin:4px 0;">${time}</div>
         <span class="defect-badge ${defectClass}">${defectText}</span>
       </div>
     `;
   }).join("");
 
-  // วาด bounding boxes
+  // วาดกรอบตามสี ไม่แสดงชื่อ
   filteredData.forEach((r, idx) => {
     if (!r.detections || r.detections.length === 0) return;
 
@@ -940,24 +1121,21 @@ function renderRecentDetections() {
       canvas.width = img.clientWidth;
       canvas.height = img.clientHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 2;
 
       r.detections.forEach(det => {
         const [x1, y1, x2, y2] = det.bbox;
         const scaleX = canvas.width / img.naturalWidth;
         const scaleY = canvas.height / img.naturalHeight;
 
-        ctx.strokeStyle = "#ef4444";
-        ctx.lineWidth = 2;
+        let color = '#ef4444';
+        if (det.class === 'spur') color = '#2563eb';
+        else if (det.class === 'open') color = '#ef4444';
+        else if (det.class === 'hole_breakout') color = '#111827';
+        else if (det.class === 'foreign_object') color = '#10b981';
+
+        ctx.strokeStyle = color;
         ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
-
-        const label = `${det.class} ${Math.round(det.conf * 100)}%`;
-        const textWidth = ctx.measureText(label).width;
-
-        ctx.fillStyle = "#ef4444";
-        ctx.fillRect(x1 * scaleX, y1 * scaleY - 18, textWidth + 8, 18);
-        ctx.fillStyle = "#fff";
-        ctx.font = "12px Arial";
-        ctx.fillText(label, x1 * scaleX + 4, y1 * scaleY - 4);
       });
     }
 
@@ -983,14 +1161,14 @@ function showModal(index) {
     modal = document.createElement("div");
     modal.classList.add("custom-modal");
     modal.style.cssText = `
-      position: fixed; top:0; left:0; width:100%; height:100%;
-      background: rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:10000;
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;
     `;
     modal.innerHTML = `
-      <div style="position:relative; background:#fff; padding:20px; border-radius:8px; max-width:90%; max-height:90%; overflow:auto;">
+      <div style="position:relative;background:#fff;padding:20px;border-radius:8px;max-width:90%;max-height:90%;overflow:auto;">
         <canvas class="modal-canvas"></canvas>
-        <div class="modal-info" style="margin-top:10px; font-size:14px;"></div>
-        <div style="margin-top:10px; text-align:right;">
+        <div class="modal-info" style="margin-top:10px;font-size:14px;"></div>
+        <div style="margin-top:10px;text-align:right;">
           <button class="modal-prev" style="margin-right:5px;">Previous</button>
           <button class="modal-next" style="margin-right:5px;">Next</button>
           <button class="modal-close" style="background:#ef4444;color:#fff;border:none;padding:6px 10px;border-radius:4px;">Close</button>
@@ -1033,16 +1211,16 @@ function showModal(index) {
 
     data.detections?.forEach(det => {
       const [x1, y1, x2, y2] = det.bbox.map(v => v * scale);
-      ctx.strokeStyle = "#ef4444";
+
+      let color = '#ef4444';
+      if (det.class === 'spur') color = '#2563eb';
+      else if (det.class === 'open') color = '#ef4444';
+      else if (det.class === 'hole_breakout') color = '#111827';
+      else if (det.class === 'foreign_object') color = '#10b981';
+
+      ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-      ctx.font = "16px Arial";
-      const textWidth = ctx.measureText(det.class).width;
-      ctx.fillStyle = "#ef4444";
-      ctx.fillRect(x1, y1 - 20, textWidth + 8, 20);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(det.class, x1 + 4, y1 - 4);
     });
   };
 

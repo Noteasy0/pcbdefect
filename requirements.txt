@@ -1,9 +1,12 @@
 fastapi
 uvicorn
+jinja2
 sqlalchemy
 pymysql
-itsdangerous
-matplotlib
-passlib
+passlib[argon2]
+python-multipart
 pytz
+matplotlib
+pdfkit
 ultralytics
+pillow
